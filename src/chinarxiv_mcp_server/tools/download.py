@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 import aiofiles
+import httpx
 import mcp.types as types
 
 from ..config import Settings, get_api_client
@@ -104,6 +105,7 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
 
             # Download figures
             figure_count = 0
+            figure_errors = []
             if include_figures and meta.get("has_figures"):
                 fig_resp = await client.get(f"/api/v1/papers/{paper_id}/figures")
                 fig_resp.raise_for_status()
@@ -135,16 +137,18 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
                         fig_path = fig_dir / fig_filename
 
                         try:
-                            img_resp = await httpx.AsyncClient(timeout=30).get(fig_url)
-                            img_resp.raise_for_status()
-                            async with aiofiles.open(fig_path, "wb") as f:
-                                await f.write(img_resp.content)
+                            async with httpx.AsyncClient(timeout=30) as fig_client:
+                                img_resp = await fig_client.get(fig_url)
+                                img_resp.raise_for_status()
+                                async with aiofiles.open(fig_path, "wb") as f:
+                                    await f.write(img_resp.content)
                             figure_count += 1
 
                             caption_text = f": {caption}" if caption else ""
                             lines.append(f"![Figure {fig_num}{caption_text}]({paper_id}/{fig_filename})")
                             lines.append("")
                         except Exception as e:
+                            figure_errors.append(f"fig{fig_num}: {type(e).__name__}: {e}")
                             logger.warning(f"Failed to download figure {fig_num}: {e}")
 
             # Save markdown
@@ -167,7 +171,7 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
                 except Exception as e:
                     logger.warning(f"Failed to download PDF: {e}")
 
-        return [types.TextContent(type="text", text=json.dumps({
+        result = {
             "status": "success",
             "message": f"Paper downloaded ({word_count} words, {figure_count} figures)",
             "paper_id": paper_id,
@@ -175,7 +179,10 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
             "figure_count": figure_count,
             "has_pdf": has_pdf,
             "storage_path": str(md_path),
-        }))]
+        }
+        if figure_errors:
+            result["figure_errors"] = figure_errors
+        return [types.TextContent(type="text", text=json.dumps(result))]
 
     except Exception as e:
         logger.error(f"Download error: {e}")

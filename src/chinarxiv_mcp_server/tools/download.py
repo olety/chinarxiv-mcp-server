@@ -11,6 +11,8 @@ import mcp.types as types
 
 from ..config import Settings, get_api_client
 
+B2_FIGURES_BASE = "https://f004.backblazeb2.com/file/chinaxiv"
+
 logger = logging.getLogger("chinarxiv-mcp-server")
 settings = Settings()
 
@@ -115,9 +117,16 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
                     lines.extend(["", "---", "", "## Figures", ""])
 
                     for fig in figures:
-                        fig_url = fig["url"]
+                        raw_url = fig["url"]
                         fig_num = fig.get("number", str(figure_count + 1))
                         caption = fig.get("caption", "")
+
+                        # API returns relative paths like "figures/chinaxiv-.../fig_4_en.png"
+                        # Actual images are on B2: https://f004.backblazeb2.com/file/chinaxiv/...
+                        if raw_url.startswith("http"):
+                            fig_url = raw_url
+                        else:
+                            fig_url = f"{B2_FIGURES_BASE}/{raw_url}"
 
                         # Determine extension from URL
                         parsed = urlparse(fig_url)
@@ -126,7 +135,7 @@ async def handle_download(arguments: Dict[str, Any]) -> List[types.TextContent]:
                         fig_path = fig_dir / fig_filename
 
                         try:
-                            img_resp = await client.get(fig_url)
+                            img_resp = await httpx.AsyncClient(timeout=30).get(fig_url)
                             img_resp.raise_for_status()
                             async with aiofiles.open(fig_path, "wb") as f:
                                 await f.write(img_resp.content)

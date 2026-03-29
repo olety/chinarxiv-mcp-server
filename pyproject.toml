@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chinarxiv-mcp-server"
+version = "0.1.0"
+description = "MCP server for searching and reading translated Chinese preprints from ChinaRxiv"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "mcp>=1.2.0",
+    "httpx>=0.24.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.1.0",
+    "aiofiles>=23.2.1",
+]
+
+[project.scripts]
+chinarxiv-mcp-server = "chinarxiv_mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chinarxiv_mcp_server"]
